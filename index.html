@@ -488,6 +488,20 @@ async function addEntryToVisit(shopId, visitId, entryFields){
     return true;
   }catch(e){ console.error(e); showSaveError(); return false; }
 }
+async function mergeIntoVisit(shopId, visitId, attendees, topicsIfEmpty, entryFields){
+  try{
+    var visitRef = doc(db, 'shops', shopId, 'visits', visitId);
+    if(attendees.length){
+      await updateDoc(visitRef, { attendees: arrayUnion.apply(null, attendees) });
+    }
+    if(topicsIfEmpty){
+      await updateDoc(visitRef, { topics: topicsIfEmpty });
+    }
+    var entryRef = doc(collection(db, 'shops', shopId, 'visits', visitId, 'entries'));
+    await setDoc(entryRef, entryFields);
+    return true;
+  }catch(e){ console.error(e); showSaveError(); return false; }
+}
 async function deleteEntryDoc(shopId, visitId, entryId){
   try{ await deleteDoc(doc(db, 'shops', shopId, 'visits', visitId, 'entries', entryId)); return true; }
   catch(e){ console.error(e); showSaveError(); return false; }
@@ -1004,13 +1018,20 @@ function openEditShopModal(shopId){
 function openAddVisitModal(){
   var html = '';
   html += '<h3>記録を追加</h3>';
-  html += '<div class="field"><label>訪問日</label><input type="date" id="f-date" value="'+todayStr()+'"></div>';
+  html += '<div class="field"><label>訪問日</label><input type="date" id="f-date" value="'+todayStr()+'"><div id="date-hint" style="font-size:12px;color:var(--gold);margin-top:5px;"></div></div>';
   html += '<div class="field"><label>その日に起きたトピックス（任意）</label><textarea id="f-topics" placeholder="例: 新人歓迎会だった"></textarea></div>';
   html += attendeesFieldHtml();
   html += entryFieldsHtml();
   html += '<div class="modal-actions"><button class="btn ghost" id="cancelBtn">キャンセル</button><button class="btn primary" id="submitBtn">追加する</button></div>';
   openModal(html);
   bindEntryFields();
+  function updateDateHint(){
+    var date = document.getElementById('f-date').value;
+    var existing = (state.visitsCache[state.currentShopId]||[]).find(function(v){ return v.date === date; });
+    document.getElementById('date-hint').textContent = existing ? 'この日の記録はすでにあります。感想がそこに追加されます。' : '';
+  }
+  document.getElementById('f-date').addEventListener('change', updateDateHint);
+  updateDateHint();
   document.getElementById('cancelBtn').addEventListener('click', closeModal);
   document.getElementById('submitBtn').addEventListener('click', async function(){
     var entry = await collectEntryFields();
@@ -1022,8 +1043,16 @@ function openAddVisitModal(){
     btn.disabled = true; btn.textContent = '保存中…';
     var date = document.getElementById('f-date').value || todayStr();
     var topics = document.getElementById('f-topics').value.trim();
-    var visitId = await createVisitWithEntry(state.currentShopId, { date: date, topics: topics, attendees: attendees }, entry);
-    if(!visitId){ btn.disabled=false; btn.textContent='追加する'; return; }
+    var existing = (state.visitsCache[state.currentShopId]||[]).find(function(v){ return v.date === date; });
+    var ok;
+    if(existing){
+      var topicsIfEmpty = (!existing.topics && topics) ? topics : null;
+      ok = await mergeIntoVisit(state.currentShopId, existing.id, attendees, topicsIfEmpty, entry);
+    } else {
+      var visitId = await createVisitWithEntry(state.currentShopId, { date: date, topics: topics, attendees: attendees }, entry);
+      ok = !!visitId;
+    }
+    if(!ok){ btn.disabled=false; btn.textContent='追加する'; return; }
     closeModal();
     delete state.visitsCache[state.currentShopId];
     await loadVisits(state.currentShopId);
