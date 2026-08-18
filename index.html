@@ -161,6 +161,7 @@ header.noren::after{
   color:var(--ink);
 }
 .shop-meta{font-size:12.5px;color:var(--ink-soft);}
+.shop-recent-dates{font-size:11.5px;color:var(--gold);margin:4px 0 0;letter-spacing:.02em;}
 
 /* ---- hanko stamp ---- */
 .hanko{
@@ -334,6 +335,12 @@ function fmtDate(d){
   var parts = d.split('-');
   if(parts.length!==3) return d;
   return parts[0]+'年'+parseInt(parts[1],10)+'月'+parseInt(parts[2],10)+'日';
+}
+function fmtDateShort(d){
+  if(!d) return '';
+  var parts = d.split('-');
+  if(parts.length!==3) return d;
+  return parts[0]+'/'+parseInt(parts[1],10)+'/'+parseInt(parts[2],10);
 }
 function todayStr(){
   var d = new Date();
@@ -540,6 +547,12 @@ function latestVisitDate(shopId){
   visits.forEach(function(v){ if((v.date||'') > max) max = v.date || ''; });
   return max;
 }
+function recentVisitDates(shopId, n){
+  var visits = state.visitsCache[shopId] || [];
+  var dates = visits.map(function(v){ return v.date; }).filter(Boolean);
+  dates.sort(function(a,b){ return b.localeCompare(a); });
+  return dates.slice(0, n);
+}
 
 function hankoHtml(avg, cls){
   cls = cls || '';
@@ -631,6 +644,10 @@ function renderList(){
       html += '<div class="shop-body">';
       html += '<p class="shop-name">'+esc(shop.name)+'</p>';
       html += '<p class="shop-meta">' + count + '回訪問</p>';
+      var recentDates = recentVisitDates(shop.id, 3);
+      if(recentDates.length){
+        html += '<p class="shop-recent-dates">' + recentDates.map(fmtDateShort).join('　') + '</p>';
+      }
       html += '</div>';
       html += hankoHtml(avg);
       html += '</div>';
@@ -676,10 +693,10 @@ function renderDetail(){
   html += hankoHtml(avg);
   html += '</div>';
 
-  html += '<div class="section-head"><h2>記録一覧</h2><button class="btn primary" id="addVisitBtn">+ この日の記録を追加</button></div>';
+  html += '<div class="section-head"><h2>記録一覧</h2><button class="btn primary" id="addVisitBtn">+ 記録を追加</button></div>';
 
   if(visits.length === 0){
-    html += '<div class="empty-state"><p>まだこのお店の記録がありません。行った日のことを書きましょう。</p><button class="btn primary" id="addVisitBtnEmpty">+ この日の記録を追加</button></div>';
+    html += '<div class="empty-state"><p>まだこのお店の記録がありません。行った日のことを書きましょう。</p><button class="btn primary" id="addVisitBtnEmpty">+ 記録を追加</button></div>';
   } else {
     visits.slice().sort(function(a,b){ return (b.date||'').localeCompare(a.date||''); }).forEach(function(visit){
       var vAvg = visitAverage(visit);
@@ -986,7 +1003,7 @@ function openEditShopModal(shopId){
 /* ---------- add visit modal ---------- */
 function openAddVisitModal(){
   var html = '';
-  html += '<h3>この日の記録を追加</h3>';
+  html += '<h3>記録を追加</h3>';
   html += '<div class="field"><label>訪問日</label><input type="date" id="f-date" value="'+todayStr()+'"></div>';
   html += '<div class="field"><label>その日に起きたトピックス（任意）</label><textarea id="f-topics" placeholder="例: 新人歓迎会だった"></textarea></div>';
   html += attendeesFieldHtml();
