@@ -147,12 +147,12 @@ header.noren::after{
   position:relative;
 }
 .shop-card:hover{transform:translateY(-3px);box-shadow:0 6px 18px rgba(43,38,34,0.16);}
-.shop-photo{width:100%;height:140px;object-fit:cover;background:var(--paper-deep);display:block;}
+.shop-photo{width:100%;height:98px;object-fit:cover;background:var(--paper-deep);display:block;}
 .shop-photo-placeholder{
-  width:100%;height:140px;display:flex;align-items:center;justify-content:center;
+  width:100%;height:98px;display:flex;align-items:center;justify-content:center;
   background:var(--paper-deep);color:var(--ink-soft);font-size:13px;
 }
-.shop-body{padding:14px 14px 16px;}
+.shop-body{padding:10px 14px 12px;}
 .shop-name{
   font-family:'Shippori Mincho', serif;
   font-weight:700;
@@ -505,6 +505,10 @@ async function mergeIntoVisit(shopId, visitId, attendees, topicsIfEmpty, entryFi
     return true;
   }catch(e){ console.error(e); showSaveError(); return false; }
 }
+async function updateEntryFields(shopId, visitId, entryId, fields){
+  try{ await updateDoc(doc(db, 'shops', shopId, 'visits', visitId, 'entries', entryId), fields); return true; }
+  catch(e){ console.error(e); showSaveError(); return false; }
+}
 async function deleteEntryDoc(shopId, visitId, entryId){
   try{ await deleteDoc(doc(db, 'shops', shopId, 'visits', visitId, 'entries', entryId)); return true; }
   catch(e){ console.error(e); showSaveError(); return false; }
@@ -735,7 +739,10 @@ function renderDetail(){
         html += hankoHtml(Number(entry.rating), 'tiny');
         html += '<span class="entry-author">'+esc(entry.author)+'</span>';
         if(entry.author === state.myName){
-          html += '<button class="btn small danger" style="margin-left:auto;padding:3px 9px;font-size:11.5px;" data-delete-entry="'+visit.id+'|'+entry.id+'">削除</button>';
+          html += '<div style="margin-left:auto;display:flex;gap:6px;">';
+          html += '<button class="btn small ghost" style="padding:3px 9px;font-size:11.5px;" data-edit-entry="'+visit.id+'|'+entry.id+'">編集</button>';
+          html += '<button class="btn small danger" style="padding:3px 9px;font-size:11.5px;" data-delete-entry="'+visit.id+'|'+entry.id+'">削除</button>';
+          html += '</div>';
         }
         html += '</div>';
         if(entry.comment) html += '<p class="entry-comment">'+esc(entry.comment)+'</p>';
@@ -762,6 +769,12 @@ function renderDetail(){
   });
   document.querySelectorAll('[data-edit-attendees]').forEach(function(btn){
     btn.addEventListener('click', function(){ openEditAttendeesModal(btn.getAttribute('data-edit-attendees')); });
+  });
+  document.querySelectorAll('[data-edit-entry]').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      var parts = btn.getAttribute('data-edit-entry').split('|');
+      openEditEntryModal(parts[0], parts[1]);
+    });
   });
   document.querySelectorAll('[data-delete-entry]').forEach(function(btn){
     btn.addEventListener('click', function(){
@@ -1059,6 +1072,56 @@ function openAddVisitModal(){
     closeModal();
     delete state.visitsCache[state.currentShopId];
     await loadVisits(state.currentShopId);
+    render();
+  });
+}
+
+/* ---------- edit entry modal ---------- */
+function openEditEntryModal(visitId, entryId){
+  var visits = state.visitsCache[state.currentShopId] || [];
+  var visit = visits.find(function(v){ return v.id === visitId; });
+  if(!visit) return;
+  var entry = (visit.entries||[]).find(function(e){ return e.id === entryId; });
+  if(!entry) return;
+
+  var html = '';
+  html += '<h3>感想を編集</h3>';
+  html += '<div class="field"><label>お名前</label><input type="text" value="'+esc(entry.author)+'" disabled style="background:var(--paper-deep);color:var(--ink-soft);"></div>';
+  html += '<div class="field"><label>評価（100点満点）</label><div class="rating-row"><input type="range" min="0" max="100" step="1" value="'+entry.rating+'" id="f-rating"><div class="rating-out" id="f-rating-out">'+entry.rating+'</div></div></div>';
+  html += '<div class="field"><label>感想（任意）</label><textarea id="f-comment">'+esc(entry.comment||'')+'</textarea></div>';
+  if(entry.photo){
+    html += '<div class="field"><label>現在の写真</label><img src="'+entry.photo+'" alt="" style="width:100px;height:100px;object-fit:cover;border-radius:8px;display:block;margin-bottom:8px;">';
+    html += '<label style="display:flex;align-items:center;gap:6px;font-size:13px;color:var(--ink-soft);"><input type="checkbox" id="f-remove-photo"> 写真を削除する</label></div>';
+  }
+  html += '<div class="field"><label>写真を変更（任意）</label><input type="file" accept="image/*" id="f-entry-photo"></div>';
+  html += '<div class="modal-actions"><button class="btn ghost" id="cancelBtn">キャンセル</button><button class="btn primary" id="submitBtn">保存する</button></div>';
+  openModal(html);
+
+  var range = document.getElementById('f-rating');
+  var out = document.getElementById('f-rating-out');
+  range.addEventListener('input', function(){ out.textContent = range.value; });
+
+  document.getElementById('cancelBtn').addEventListener('click', closeModal);
+  document.getElementById('submitBtn').addEventListener('click', async function(){
+    var btn = document.getElementById('submitBtn');
+    btn.disabled = true; btn.textContent = '保存中…';
+    var rating = Number(document.getElementById('f-rating').value);
+    var comment = document.getElementById('f-comment').value.trim();
+    var photoFile = document.getElementById('f-entry-photo').files[0];
+    var removeCheckbox = document.getElementById('f-remove-photo');
+    var newPhoto = entry.photo || null;
+    if(photoFile){
+      try{ newPhoto = await compressImage(photoFile); }catch(e){ /* keep old photo on failure */ }
+    } else if(removeCheckbox && removeCheckbox.checked){
+      newPhoto = null;
+    }
+    var fields = { rating: rating, comment: comment, photo: newPhoto };
+    var ok = await updateEntryFields(state.currentShopId, visitId, entryId, fields);
+    if(!ok){ btn.disabled=false; btn.textContent='保存する'; return; }
+    entry.rating = rating;
+    entry.comment = comment;
+    entry.photo = newPhoto;
+    closeModal();
     render();
   });
 }
