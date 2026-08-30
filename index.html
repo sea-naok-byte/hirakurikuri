@@ -165,21 +165,39 @@ header.noren::after{
   position:relative;
 }
 .shop-card:hover{transform:translateY(-3px);box-shadow:0 6px 18px rgba(43,38,34,0.16);}
-.shop-photo{width:100%;height:98px;object-fit:cover;background:var(--paper-deep);display:block;}
+.shop-photo-wrap{position:relative;height:84px;}
+.shop-photo{width:100%;height:84px;object-fit:cover;background:var(--indigo);display:block;}
 .shop-photo-placeholder{
-  width:100%;height:98px;display:flex;align-items:center;justify-content:center;
-  background:var(--paper-deep);color:var(--ink-soft);font-size:13px;
+  width:100%;height:84px;
+  background:var(--indigo);
+  background-image:radial-gradient(circle at 30% 30%, rgba(245,239,224,0.08), transparent 60%);
 }
-.shop-body{padding:10px 14px 12px;}
-.shop-name{
+.shop-photo-overlay{
+  position:absolute;left:0;right:0;bottom:0;
+  padding:16px 10px 6px;
+  background:linear-gradient(to top, rgba(20,14,10,0.78) 0%, rgba(20,14,10,0.25) 65%, transparent 100%);
+}
+.shop-name-overlay{
   font-family:'Shippori Mincho', serif;
   font-weight:700;
-  font-size:17px;
-  margin:0 0 6px;
-  color:var(--ink);
+  font-size:14px;
+  margin:0;
+  color:#fff;
+  text-shadow:0 1px 3px rgba(0,0,0,0.7);
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
 }
-.shop-meta{font-size:12.5px;color:var(--ink-soft);}
-.shop-recent-dates{font-size:11.5px;color:var(--gold);margin:4px 0 0;letter-spacing:.02em;}
+.shop-count-overlay{
+  font-size:10.5px;
+  margin:1px 0 0;
+  color:rgba(255,255,255,0.88);
+  text-shadow:0 1px 2px rgba(0,0,0,0.7);
+}
+.shop-body{padding:6px 12px 8px;min-height:20px;display:flex;align-items:center;}
+.shop-recent-dates{font-size:11px;color:var(--gold);margin:0;letter-spacing:.02em;}
+.shop-recent-dates.empty{color:var(--ink-soft);}
+
 
 /* ---- hanko stamp ---- */
 .hanko{
@@ -260,6 +278,17 @@ header.noren::after{
   padding:26px;box-shadow:0 10px 40px rgba(0,0,0,0.3);
 }
 .modal h3{font-family:'Shippori Mincho', serif;margin:0 0 18px;font-size:19px;border-left:4px solid var(--hanko);padding-left:10px;}
+.lightbox-overlay{
+  background:rgba(15,10,8,0.9);
+  align-items:center;
+  padding:24px;
+  cursor:zoom-out;
+}
+.lightbox-img{
+  max-width:100%;max-height:100%;
+  border-radius:10px;
+  box-shadow:0 10px 40px rgba(0,0,0,0.5);
+}
 .field{margin-bottom:15px;}
 .field label{display:block;font-size:12.5px;color:var(--ink-soft);margin-bottom:5px;letter-spacing:.03em;}
 .field input[type=text], .field input[type=date], .field textarea, .field select{
@@ -675,20 +704,26 @@ function renderList(){
       var avg = shopAverage(shop.id);
       var count = visitCount(shop.id);
       html += '<div class="shop-card" data-shop="'+shop.id+'">';
+      html += '<div class="shop-photo-wrap">';
       if(shop.photo){
         html += '<img class="shop-photo" src="'+shop.photo+'" alt="">';
       } else {
-        html += '<div class="shop-photo-placeholder">写真なし</div>';
+        html += '<div class="shop-photo-placeholder"></div>';
       }
-      html += '<div class="shop-body">';
-      html += '<p class="shop-name">'+esc(shop.name)+'</p>';
-      html += '<p class="shop-meta">' + count + '回訪問</p>';
-      var recentDates = recentVisitDates(shop.id, 3);
-      if(recentDates.length){
-        html += '<p class="shop-recent-dates">' + recentDates.map(fmtDateShort).join('　') + '</p>';
-      }
+      html += '<div class="shop-photo-overlay">';
+      html += '<p class="shop-name-overlay">'+esc(shop.name)+'</p>';
+      html += '<p class="shop-count-overlay">' + count + '回訪問</p>';
       html += '</div>';
       html += hankoHtml(avg);
+      html += '</div>';
+      var recentDates = recentVisitDates(shop.id, 3);
+      html += '<div class="shop-body">';
+      if(recentDates.length){
+        html += '<p class="shop-recent-dates">実際に行った日：' + recentDates.map(fmtDateShort).join('　') + '</p>';
+      } else {
+        html += '<p class="shop-recent-dates empty">まだ訪問記録がありません</p>';
+      }
+      html += '</div>';
       html += '</div>';
     });
     html += '</div>';
@@ -705,13 +740,32 @@ function renderList(){
   document.getElementById('participantFilter').addEventListener('change', function(e){ state.filterParticipant = e.target.value; renderList(); });
 }
 
-async function openShop(shopId){
+async function openShop(shopId, skipPush){
   state.currentShopId = shopId;
   state.view = 'detail';
+  if(!skipPush){
+    history.pushState({ view: 'detail', shopId: shopId }, '', '#shop=' + shopId);
+  }
   render();
   await loadVisits(shopId);
   render();
 }
+function backToList(skipPush){
+  state.view = 'list';
+  state.currentShopId = null;
+  if(!skipPush){
+    history.pushState({ view: 'list' }, '', location.pathname + location.search);
+  }
+  render();
+}
+window.addEventListener('popstate', function(e){
+  var st = e.state;
+  if(st && st.view === 'detail' && st.shopId){
+    openShop(st.shopId, true);
+  } else {
+    backToList(true);
+  }
+});
 
 function renderDetail(){
   var shop = state.shops.find(function(s){ return s.id === state.currentShopId; });
@@ -722,7 +776,7 @@ function renderDetail(){
   var html = '';
   html += '<button class="back-link" id="backBtn">← 一覧に戻る</button>';
   html += '<div class="shop-header">';
-  if(shop.photo){ html += '<img src="'+shop.photo+'" alt="">'; }
+  if(shop.photo){ html += '<img src="'+shop.photo+'" alt="" id="shopHeaderPhoto" style="cursor:zoom-in;">'; }
   else { html += '<div class="ph-placeholder">写真なし</div>'; }
   html += '<div style="flex:1;min-width:180px;">';
   html += '<h2>'+esc(shop.name)+'</h2>';
@@ -775,7 +829,9 @@ function renderDetail(){
   }
 
   root.innerHTML = html;
-  document.getElementById('backBtn').addEventListener('click', function(){ state.view='list'; render(); });
+  document.getElementById('backBtn').addEventListener('click', function(){ backToList(); });
+  var headerPhoto = document.getElementById('shopHeaderPhoto');
+  if(headerPhoto){ headerPhoto.addEventListener('click', function(){ openPhotoLightbox(shop.photo); }); }
   document.getElementById('editShopBtn').addEventListener('click', function(){ openEditShopModal(shop.id); });
   document.getElementById('addVisitBtn') && document.getElementById('addVisitBtn').addEventListener('click', openAddVisitModal);
   document.getElementById('addVisitBtnEmpty') && document.getElementById('addVisitBtnEmpty').addEventListener('click', openAddVisitModal);
@@ -834,6 +890,15 @@ function openModal(innerHtml){
   overlay.addEventListener('mousedown', function(e){ if(e.target === overlay) closeModal(); });
   document.body.appendChild(overlay);
   return overlay;
+}
+function openPhotoLightbox(photoSrc){
+  if(!photoSrc) return;
+  closeModal();
+  var overlay = document.createElement('div');
+  overlay.className = 'overlay lightbox-overlay';
+  overlay.innerHTML = '<img src="'+photoSrc+'" alt="" class="lightbox-img">';
+  overlay.addEventListener('click', function(){ closeModal(); });
+  document.body.appendChild(overlay);
 }
 
 /* ---------- attendees sub-form ---------- */
@@ -1013,9 +1078,7 @@ function openEditShopModal(shopId){
     state.shops = state.shops.filter(function(s){ return s.id !== shop.id; });
     delete state.visitsCache[shop.id];
     closeModal();
-    state.view = 'list';
-    state.currentShopId = null;
-    render();
+    backToList();
   });
   document.getElementById('submitBtn').addEventListener('click', async function(){
     var name = document.getElementById('f-name').value.trim();
@@ -1230,7 +1293,16 @@ function openMemberModal(){
 document.getElementById('memberPillBtn').addEventListener('click', openMemberModal);
 
 /* ---------- init ---------- */
-loadAll().then(render);
+loadAll().then(function(){
+  var m = location.hash.match(/^#shop=(.+)$/);
+  if(m){
+    history.replaceState({ view: 'detail', shopId: m[1] }, '', location.hash);
+    openShop(m[1], true);
+  } else {
+    history.replaceState({ view: 'list' }, '', location.pathname + location.search);
+    render();
+  }
+});
 
 })();
 </script>
