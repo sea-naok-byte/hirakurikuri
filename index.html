@@ -153,7 +153,7 @@ header.noren::after{
 .controls-bar select.control-input{flex:0 1 180px;}
 
 /* ---- shop grid ---- */
-.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:18px;}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:4px;}
 .shop-card{
   background:var(--card);
   border:1px solid var(--line);
@@ -203,10 +203,16 @@ header.noren::after{
   font-family:'Shippori Mincho', serif;
   font-size:15px;
   color:var(--ink-soft);
-  margin:22px 0 12px;
+  margin:14px 0 8px;
   padding-left:8px;
   border-left:3px solid var(--gold);
 }
+.wishlist-grid{gap:4px;}
+.wishlist-card .shop-photo-wrap{height:40px;}
+.wishlist-card .shop-photo{height:40px;}
+.wishlist-card .shop-photo-placeholder{height:40px;}
+.wishlist-card .shop-photo-overlay{padding:6px 8px 3px;}
+.wishlist-card .shop-name-overlay{font-size:12px;}
 
 
 /* ---- hanko stamp ---- */
@@ -661,7 +667,21 @@ function render(){
   }
 }
 
-function renderShopCard(shop){
+function renderShopCard(shop, compact){
+  if(compact){
+    var html2 = '';
+    html2 += '<div class="shop-card wishlist-card" data-shop="'+shop.id+'">';
+    html2 += '<div class="shop-photo-wrap">';
+    if(shop.photo){
+      html2 += '<img class="shop-photo" src="'+shop.photo+'" alt="">';
+    } else {
+      html2 += '<div class="shop-photo-placeholder"></div>';
+    }
+    html2 += '<div class="shop-photo-overlay"><p class="shop-name-overlay">'+esc(shop.name)+'</p></div>';
+    html2 += '</div>';
+    html2 += '</div>';
+    return html2;
+  }
   var avg = shopAverage(shop.id);
   var count = visitCount(shop.id);
   var html = '';
@@ -749,16 +769,15 @@ function renderList(){
   } else if(list.length === 0){
     html += '<div class="empty-state"><p>検索条件に合うお店が見つかりません。</p></div>';
   } else {
-    if(wishlist.length){
-      html += '<h3 class="subsection-head">行きたいお店</h3>';
-      html += '<div class="grid">';
-      wishlist.forEach(function(shop){ html += renderShopCard(shop); });
-      html += '</div>';
-    }
     if(visited.length){
-      html += '<h3 class="subsection-head">行ったお店</h3>';
       html += '<div class="grid">';
       visited.forEach(function(shop){ html += renderShopCard(shop); });
+      html += '</div>';
+    }
+    if(wishlist.length){
+      html += '<h3 class="subsection-head">行きたいお店</h3>';
+      html += '<div class="grid wishlist-grid">';
+      wishlist.forEach(function(shop){ html += renderShopCard(shop, true); });
       html += '</div>';
     }
   }
