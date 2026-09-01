@@ -194,9 +194,19 @@ header.noren::after{
   color:rgba(255,255,255,0.88);
   text-shadow:0 1px 2px rgba(0,0,0,0.7);
 }
-.shop-body{padding:6px 12px 8px;min-height:20px;display:flex;align-items:center;}
+.shop-body{padding:6px 12px 8px;min-height:20px;display:flex;flex-direction:column;gap:3px;}
 .shop-recent-dates{font-size:11px;color:var(--gold);margin:0;letter-spacing:.02em;}
 .shop-recent-dates.empty{color:var(--ink-soft);}
+.shop-website-link{font-size:11px;color:var(--indigo);text-decoration:none;}
+.shop-website-link:hover{text-decoration:underline;}
+.subsection-head{
+  font-family:'Shippori Mincho', serif;
+  font-size:15px;
+  color:var(--ink-soft);
+  margin:22px 0 12px;
+  padding-left:8px;
+  border-left:3px solid var(--gold);
+}
 
 
 /* ---- hanko stamp ---- */
@@ -380,6 +390,11 @@ var state = {
 
 function uid(){ return 'id' + Date.now().toString(36) + Math.random().toString(36).slice(2,8); }
 function esc(s){ return (s||'').replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
+function normalizeUrl(u){
+  if(!u) return '';
+  if(!/^https?:\/\//i.test(u)) u = 'https://' + u;
+  return u;
+}
 function fmtDate(d){
   if(!d) return '';
   var parts = d.split('-');
@@ -457,7 +472,7 @@ async function loadAll(){
     var shopsSnap = await getDocs(collection(db, 'shops'));
     state.shops = shopsSnap.docs.map(function(d){
       var data = d.data();
-      return { id: d.id, name: data.name || '', photo: data.photo || null, createdAt: data.createdAt || 0 };
+      return { id: d.id, name: data.name || '', photo: data.photo || null, website: data.website || '', createdAt: data.createdAt || 0 };
     });
   }catch(e){ console.error(e); state.shops = []; }
 
@@ -497,7 +512,7 @@ async function loadVisits(shopId){
 /* ---- shop writes ---- */
 async function createShop(shop){
   try{
-    await setDoc(doc(db, 'shops', shop.id), { name: shop.name, photo: shop.photo, createdAt: shop.createdAt });
+    await setDoc(doc(db, 'shops', shop.id), { name: shop.name, photo: shop.photo, website: shop.website || '', createdAt: shop.createdAt });
     return true;
   }catch(e){ console.error(e); showSaveError(); return false; }
 }
@@ -646,9 +661,41 @@ function render(){
   }
 }
 
+function renderShopCard(shop){
+  var avg = shopAverage(shop.id);
+  var count = visitCount(shop.id);
+  var html = '';
+  html += '<div class="shop-card" data-shop="'+shop.id+'">';
+  html += '<div class="shop-photo-wrap">';
+  if(shop.photo){
+    html += '<img class="shop-photo" src="'+shop.photo+'" alt="">';
+  } else {
+    html += '<div class="shop-photo-placeholder"></div>';
+  }
+  html += '<div class="shop-photo-overlay">';
+  html += '<p class="shop-name-overlay">'+esc(shop.name)+'</p>';
+  html += '<p class="shop-count-overlay">' + count + '回訪問</p>';
+  html += '</div>';
+  html += hankoHtml(avg);
+  html += '</div>';
+  var recentDates = recentVisitDates(shop.id, 3);
+  html += '<div class="shop-body">';
+  if(count > 0){
+    html += '<p class="shop-recent-dates">実際に行った日：' + recentDates.map(fmtDateShort).join('　') + '</p>';
+  } else {
+    html += '<p class="shop-recent-dates empty">まだ行っていません</p>';
+  }
+  if(shop.website){
+    html += '<a href="'+esc(shop.website)+'" target="_blank" rel="noopener noreferrer" class="shop-website-link" data-website-link onclick="event.stopPropagation()">🌐 ホームページ</a>';
+  }
+  html += '</div>';
+  html += '</div>';
+  return html;
+}
+
 function renderList(){
   var html = '';
-  html += '<div class="section-head"><h2>お店の記録</h2><button class="btn primary" id="addShopBtn">+ 新しいお店を追加</button></div>';
+  html += '<div class="section-head"><h2>お店の記録</h2><div style="display:flex;gap:8px;flex-wrap:wrap;"><button class="btn ghost" id="addWishlistBtn">+ 行きたいお店を追加</button><button class="btn primary" id="addShopBtn">+ 新しいお店を追加</button></div></div>';
 
   html += '<div class="controls-bar">';
   html += '<input type="text" id="searchInput" placeholder="お店名で検索" value="'+esc(state.searchQuery)+'">';
@@ -694,44 +741,32 @@ function renderList(){
       list.sort(function(a,b){ return (b.createdAt||0)-(a.createdAt||0); });
   }
 
+  var wishlist = list.filter(function(s){ return visitCount(s.id) === 0; });
+  var visited = list.filter(function(s){ return visitCount(s.id) > 0; });
+
   if(state.shops.length === 0){
     html += '<div class="empty-state"><p>まだ記録がありません。最初の一軒を追加しましょう。</p><button class="btn primary" id="addShopBtnEmpty">+ 新しいお店を追加</button></div>';
   } else if(list.length === 0){
     html += '<div class="empty-state"><p>検索条件に合うお店が見つかりません。</p></div>';
   } else {
-    html += '<div class="grid">';
-    list.forEach(function(shop){
-      var avg = shopAverage(shop.id);
-      var count = visitCount(shop.id);
-      html += '<div class="shop-card" data-shop="'+shop.id+'">';
-      html += '<div class="shop-photo-wrap">';
-      if(shop.photo){
-        html += '<img class="shop-photo" src="'+shop.photo+'" alt="">';
-      } else {
-        html += '<div class="shop-photo-placeholder"></div>';
-      }
-      html += '<div class="shop-photo-overlay">';
-      html += '<p class="shop-name-overlay">'+esc(shop.name)+'</p>';
-      html += '<p class="shop-count-overlay">' + count + '回訪問</p>';
+    if(wishlist.length){
+      html += '<h3 class="subsection-head">行きたいお店</h3>';
+      html += '<div class="grid">';
+      wishlist.forEach(function(shop){ html += renderShopCard(shop); });
       html += '</div>';
-      html += hankoHtml(avg);
+    }
+    if(visited.length){
+      html += '<h3 class="subsection-head">行ったお店</h3>';
+      html += '<div class="grid">';
+      visited.forEach(function(shop){ html += renderShopCard(shop); });
       html += '</div>';
-      var recentDates = recentVisitDates(shop.id, 3);
-      html += '<div class="shop-body">';
-      if(recentDates.length){
-        html += '<p class="shop-recent-dates">実際に行った日：' + recentDates.map(fmtDateShort).join('　') + '</p>';
-      } else {
-        html += '<p class="shop-recent-dates empty">まだ訪問記録がありません</p>';
-      }
-      html += '</div>';
-      html += '</div>';
-    });
-    html += '</div>';
+    }
   }
   root.innerHTML = html;
 
   document.getElementById('addShopBtn') && document.getElementById('addShopBtn').addEventListener('click', openAddShopModal);
   document.getElementById('addShopBtnEmpty') && document.getElementById('addShopBtnEmpty').addEventListener('click', openAddShopModal);
+  document.getElementById('addWishlistBtn') && document.getElementById('addWishlistBtn').addEventListener('click', openAddWishlistModal);
   document.querySelectorAll('.shop-card').forEach(function(card){
     card.addEventListener('click', function(){ openShop(card.getAttribute('data-shop')); });
   });
@@ -781,6 +816,9 @@ function renderDetail(){
   html += '<div style="flex:1;min-width:180px;">';
   html += '<h2>'+esc(shop.name)+'</h2>';
   html += '<p class="stat">訪問回数: '+ visits.length +'回</p>';
+  if(shop.website){
+    html += '<p class="stat"><a href="'+esc(shop.website)+'" target="_blank" rel="noopener noreferrer" style="color:var(--indigo);">🌐 ホームページを見る</a></p>';
+  }
   html += '<button class="btn small ghost" id="editShopBtn">編集</button>';
   html += '</div>';
   html += hankoHtml(avg);
@@ -1009,6 +1047,7 @@ function openAddShopModal(){
   html += '<h3>新しいお店を追加</h3>';
   html += '<div class="field"><label>お店の名前</label><input type="text" id="f-name" placeholder="例: 大衆酒場 とり松"></div>';
   html += '<div class="field"><label>お店の表の写真（任意）</label><input type="file" accept="image/*" id="f-photo"></div>';
+  html += '<div class="field"><label>ホームページURL（任意）</label><input type="text" id="f-website" placeholder="https://..."></div>';
   html += '<hr style="border:none;border-top:1px solid var(--line);margin:18px 0;">';
   html += '<div class="field"><label>訪問日</label><input type="date" id="f-date" value="'+todayStr()+'"></div>';
   html += '<div class="field"><label>その日に起きたトピックス（任意）</label><textarea id="f-topics" placeholder="例: 〇〇さんの誕生日会だった"></textarea></div>';
@@ -1027,12 +1066,13 @@ function openAddShopModal(){
     if(attendees.indexOf(entry.author) === -1) attendees.push(entry.author);
     await ensureMembers(attendees);
     var photoFile = document.getElementById('f-photo').files[0];
+    var website = normalizeUrl(document.getElementById('f-website').value.trim());
     var btn = document.getElementById('submitBtn');
     btn.disabled = true; btn.textContent = '保存中…';
     var photo = null;
     try{ photo = await compressImage(photoFile); }catch(e){ /* ignore, keep null */ }
     var shopId = uid();
-    var shop = { id: shopId, name: name, photo: photo, createdAt: Date.now() };
+    var shop = { id: shopId, name: name, photo: photo, website: website, createdAt: Date.now() };
     var date = document.getElementById('f-date').value || todayStr();
     var topics = document.getElementById('f-topics').value.trim();
 
@@ -1050,6 +1090,36 @@ function openAddShopModal(){
   });
 }
 
+/* ---------- add wishlist shop modal ---------- */
+function openAddWishlistModal(){
+  var html = '';
+  html += '<h3>行きたいお店を追加</h3>';
+  html += '<div class="field"><label>お店の名前</label><input type="text" id="f-name" placeholder="例: 大衆酒場 とり松"></div>';
+  html += '<div class="field"><label>お店の表の写真（任意）</label><input type="file" accept="image/*" id="f-photo"></div>';
+  html += '<div class="field"><label>ホームページURL（任意）</label><input type="text" id="f-website" placeholder="https://..."></div>';
+  html += '<div class="modal-actions"><button class="btn ghost" id="cancelBtn">キャンセル</button><button class="btn primary" id="submitBtn">追加する</button></div>';
+  openModal(html);
+  document.getElementById('cancelBtn').addEventListener('click', closeModal);
+  document.getElementById('submitBtn').addEventListener('click', async function(){
+    var name = document.getElementById('f-name').value.trim();
+    if(!name){ alert('お店の名前を入力してください。'); return; }
+    var photoFile = document.getElementById('f-photo').files[0];
+    var website = normalizeUrl(document.getElementById('f-website').value.trim());
+    var btn = document.getElementById('submitBtn');
+    btn.disabled = true; btn.textContent = '保存中…';
+    var photo = null;
+    try{ photo = await compressImage(photoFile); }catch(e){ /* ignore, keep null */ }
+    var shopId = uid();
+    var shop = { id: shopId, name: name, photo: photo, website: website, createdAt: Date.now() };
+    var okShop = await createShop(shop);
+    if(!okShop){ btn.disabled=false; btn.textContent='追加する'; return; }
+    state.shops.push(shop);
+    state.visitsCache[shopId] = [];
+    closeModal();
+    render();
+  });
+}
+
 /* ---------- edit shop modal ---------- */
 function openEditShopModal(shopId){
   var shop = state.shops.find(function(s){ return s.id === shopId; });
@@ -1062,6 +1132,7 @@ function openEditShopModal(shopId){
     html += '<label style="display:flex;align-items:center;gap:6px;font-size:13px;color:var(--ink-soft);"><input type="checkbox" id="f-remove-photo"> 写真を削除する</label></div>';
   }
   html += '<div class="field"><label>写真を変更（任意）</label><input type="file" accept="image/*" id="f-photo"></div>';
+  html += '<div class="field"><label>ホームページURL（任意）</label><input type="text" id="f-website" value="'+esc(shop.website||'')+'" placeholder="https://..."></div>';
   html += '<div class="modal-actions" style="justify-content:space-between;"><button class="btn danger" id="deleteShopBtn">このお店を削除</button><div style="display:flex;gap:10px;"><button class="btn ghost" id="cancelBtn">キャンセル</button><button class="btn primary" id="submitBtn">保存する</button></div></div>';
   openModal(html);
   document.getElementById('cancelBtn').addEventListener('click', closeModal);
@@ -1096,6 +1167,8 @@ function openEditShopModal(shopId){
     var fields = {};
     if(shop.name !== name) fields.name = name;
     if(shop.photo !== newPhoto) fields.photo = newPhoto;
+    var website = normalizeUrl(document.getElementById('f-website').value.trim());
+    if((shop.website||'') !== website) fields.website = website;
     var ok = true;
     if(Object.keys(fields).length){
       ok = await updateShopFields(shop.id, fields);
@@ -1103,6 +1176,7 @@ function openEditShopModal(shopId){
     if(!ok){ btn.disabled=false; btn.textContent='保存する'; return; }
     shop.name = name;
     shop.photo = newPhoto;
+    shop.website = website;
     closeModal();
     render();
   });
